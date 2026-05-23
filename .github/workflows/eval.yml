@@ -1,0 +1,93 @@
+# =============================================================================
+# FinReg-RAG CI Pipeline
+# Triggers: every push to main branch, every pull request to main
+# What it does: installs dependencies, runs the evaluation harness,
+# fails the build if the system scores below 70% overall
+# =============================================================================
+
+name: FinReg-RAG Evaluation CI          # name shown in GitHub Actions UI
+
+on:                                      # when to run this workflow
+  push:
+    branches: [ main ]                   # run on every push to main branch
+  pull_request:
+    branches: [ main ]                   # run on every pull request to main
+  workflow_dispatch:                     # allow manual trigger from GitHub UI
+
+jobs:
+  evaluate:                              # job name
+    runs-on: ubuntu-latest               # run on a fresh Ubuntu Linux machine
+
+    steps:
+
+      # Step 1: Check out the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4        # official GitHub action to clone the repo
+
+      # Step 2: Set up Python 3.11
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5   # official GitHub action for Python setup
+        with:
+          python-version: "3.11"        # must match our local Python version
+
+      # Step 3: Cache pip dependencies
+      # This saves the installed packages between runs so CI is faster
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip            # where pip stores downloaded packages
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # Step 4: Install all Python dependencies from requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip     # upgrade pip itself first
+          pip install -r requirements.txt         # install all project dependencies
+
+      # Step 5: Create required directories
+      # CI starts with a fresh repo — no logs/ or data/ folders yet
+      - name: Create required directories
+        run: |
+          mkdir -p logs                 # create logs directory for SQLite + JSONL
+          mkdir -p data/chromadb        # create chromadb directory
+
+      # Step 6: Download the Basel III PDF and rebuild the vector database
+      # CI has no local data — we must rebuild from scratch on every run
+      - name: Download Basel III document
+        run: |
+          python -c "
+          import urllib.request
+          import os
+          os.makedirs('data/raw', exist_ok=True)
+          url = 'https://www.bis.org/publ/bcbs189.pdf'
+          urllib.request.urlretrieve(url, 'data/raw/basel3_framework.pdf')
+          print('Downloaded Basel III PDF successfully')
+          "
+
+      # Step 7: Run ingestion, chunking, and embedding to rebuild ChromaDB
+      - name: Build vector database
+        run: |
+          python phase1/ingest.py       # extract text from PDF
+          python phase1/chunk.py        # split into chunks
+          python phase1/embed_and_store.py  # embed and store in ChromaDB
+
+      # Step 8: Run the evaluation harness
+      # Exit code 0 = passed, exit code 1 = failed (evaluator.py handles this)
+      - name: Run evaluation harness
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}       # inject from GitHub Secrets
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}   # inject from GitHub Secrets
+        run: |
+          python phase4/evaluator.py    # run all 10 test cases
+
+      # Step 9: Upload the eval report as a downloadable artifact
+      # Even if CI fails, you can download the report to see what went wrong
+      - name: Upload evaluation report
+        uses: actions/upload-artifact@v4
+        if: always()                    # run this step even if previous steps failed
+        with:
+          name: eval-report             # name of the artifact in GitHub UI
+          path: phase4/eval_report.json # which file to upload
+          retention-days: 30            # keep for 30 days
