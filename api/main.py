@@ -22,6 +22,7 @@ import shutil                       # for copying uploaded files to disk
 
 from fastapi import FastAPI, HTTPException, File, UploadFile   # FastAPI core
 from fastapi.middleware.cors import CORSMiddleware              # allows React to call our API
+from api.startup import run_startup                  # startup ingestion check
 
 # --- PATH SETUP ---
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -54,12 +55,12 @@ app = FastAPI(
     description="Production RAG API for financial regulatory documents",
     version="1.0.0"
 )
-
+# Run startup check — downloads and ingests Basel III if ChromaDB is empty
+run_startup()
 # --- CORS MIDDLEWARE ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],                                 # allows any frontend to call the API    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -1,0 +1,18 @@
+# =============================================================================
+# Render deployment configuration for FinReg-RAG backend
+# This file tells Render how to build and run our FastAPI server
+# =============================================================================
+
+services:
+  - type: web                          # web service (not worker or cron)
+    name: finreg-rag-api               # service name shown in Render dashboard
+    runtime: python                    # Python runtime
+    buildCommand: pip install -r requirements.txt   # install dependencies
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT  # start server
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0                  # match our local Python version
+      - key: GROQ_API_KEY
+        sync: false                    # set manually in Render dashboard
+      - key: COHERE_API_KEY
+        sync: false                    # set manually in Render dashboard
