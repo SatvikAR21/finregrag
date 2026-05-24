@@ -29,9 +29,7 @@ CHUNK_OVERLAP    = 50                    # same overlap as Phase 1
 PROCESSED_DIR    = os.path.join(_PROJECT_ROOT, "data", "processed")
 
 # Load embedding model once at module level — reused for every upload
-print("Loading embedding model for ingestion pipeline...")
-_MODEL = SentenceTransformer(EMBEDDING_MODEL)   # loaded once, reused every call
-print("Embedding model ready.")
+_MODEL = None    # loaded lazily on first upload to save startup memory
 
 
 def ingest_document(pdf_path: str) -> dict:
@@ -129,8 +127,10 @@ def ingest_document(pdf_path: str) -> dict:
     existing_count = collection.count()          # how many vectors already stored
 
     texts_to_embed = [c["text"] for c in all_chunks]             # extract just text
-    vectors = _MODEL.encode(texts_to_embed, show_progress_bar=False).tolist()  # embed all
-    for i, (chunk, vector) in enumerate(zip(all_chunks, vectors)):  # pair chunks + vectors
+    global _MODEL
+    if _MODEL is None:
+    _MODEL = SentenceTransformer(EMBEDDING_MODEL)
+    vectors = _MODEL.encode(texts_to_embed, show_progress_bar=False).tolist()    for i, (chunk, vector) in enumerate(zip(all_chunks, vectors)):  # pair chunks + vectors
         chunk_id = f"{doc_id}_p{chunk['page']}_c{chunk['chunk_num']}_{existing_count + i}"
         ids.append(chunk_id)
         documents.append(chunk["text"])

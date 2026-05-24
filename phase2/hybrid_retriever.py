@@ -19,8 +19,8 @@ COLLECTION_NAME = "finreg_documents"             # confirmed collection name
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"            # same model used to build the index
 TOP_K = 10                                        # results to retrieve from each method
 RRF_K = 60    
-# Load embedding model ONCE at module import time — not on every query
-_EMBEDDING_MODEL = SentenceTransformer(EMBEDDING_MODEL)                                    # RRF constant — 60 is the standard default
+# Model loaded lazily on first query — saves memory on startup
+_EMBEDDING_MODEL = None
 
 
 def load_chunks():
@@ -68,8 +68,10 @@ def vector_search(query, top_k=TOP_K):
     We return full documents here so RRF can work with text directly,
     without needing to map IDs back to our JSON chunks.
     """
-    query_embedding = _EMBEDDING_MODEL.encode([query]).tolist()  # use pre-loaded model
-    client = chromadb.PersistentClient(path=CHROMA_PATH)    # connect to ChromaDB
+    global _EMBEDDING_MODEL
+    if _EMBEDDING_MODEL is None:
+    _EMBEDDING_MODEL = SentenceTransformer(EMBEDDING_MODEL)
+    query_embedding = _EMBEDDING_MODEL.encode([query]).tolist()    client = chromadb.PersistentClient(path=CHROMA_PATH)    # connect to ChromaDB
     collection = client.get_collection(COLLECTION_NAME)     # get our collection
     results = collection.query(                              # run similarity search
         query_embeddings=query_embedding,
